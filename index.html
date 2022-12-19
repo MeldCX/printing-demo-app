@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://storage.googleapis.com/assets.meld.cx/agent/1.0.42/Agent.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: sans-serif;
+        }
+
+        h1 {
+            margin-top: 100px;
+        }
+
+        button {
+            margin-top: 60px;
+            width: 160px;
+            height: 100px;
+        }
+
+
+    </style>
+    <title>Printing Demo</title>
+</head>
+
+<body>
+    <h1>Printing Demo</h1>
+    <button id="print">PRINT</button>
+
+    <script>
+
+        const firstName = 'John';
+        const lastName = 'Smith';
+        const date = new Date().toDateString();
+        const imageUrl = 'meldcx-logo.svg';
+
+        const agent = window.Agent;
+
+        const loadImage = async() => {
+            const image = new Image();
+            image.src = imageUrl;
+
+            const success = await new Promise(resolve => {
+                image.onload = () => resolve(true);
+                image.onerror = e => {
+                    console.error(e);
+                    resolve(false);
+                };
+            });
+
+            if (success) return image;
+        };
+
+        const drawImage = async() => {
+            const padding = 30; // px
+            const canvas = document.createElement('canvas');
+
+            canvas.height = 2000;
+            canvas.width = 400;
+            canvas.style.border = '1px solid blue';
+            const context = canvas.getContext('2d');
+
+            let top = 0;
+            context.fillStyle = 'white';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            const logo = await loadImage();
+            if (!!logo) {
+                top += padding;
+                const width = canvas.width - 2 * padding;
+                const height = width * (logo.height / logo.width);
+                const center = (canvas.width - width) / 2;
+
+                context.drawImage(logo, center, top, width, height);
+                top += height + padding * 2;
+            }
+
+            // trim unused space
+            const imageData = context.getImageData(0, 0, canvas.width, top);
+            canvas.height = top;
+            context.putImageData(imageData, 0, 0);
+
+            return canvas;
+        };
+
+        const print = async() => {
+
+            await agent.onReadyAsync();
+
+            const canvas = await drawImage();
+            const context = canvas.getContext('2d');
+            const originalCanvasData = context.getImageData(0, 0, canvas.width, canvas.height);
+            const imageData = await agent.Peripherals.Printer.imageDataFromCanvasData(
+                originalCanvasData,
+                { greyScale: true, dither: false }
+            );
+
+            try {
+                await agent.Peripherals.Printer.clearBuffer();
+                await agent.Peripherals.Printer.center();
+                await agent.Peripherals.Printer.imageToBuffer(imageData);
+                await agent.Peripherals.Printer.printFromBuffer();
+                await agent.Peripherals.Printer.clearBuffer();
+
+                await agent.Peripherals.Printer.bold();
+                await agent.Peripherals.Printer.fontSize(4);
+                await agent.Peripherals.Printer.text(`${firstName} ${lastName}`);
+                await agent.Peripherals.Printer.feed(3);
+                await agent.Peripherals.Printer.clearBuffer();
+
+                await agent.Peripherals.Printer.bold({off: true});
+                await agent.Peripherals.Printer.fontSize(1);
+                await agent.Peripherals.Printer.text(date);
+                await agent.Peripherals.Printer.feed(2);
+                await agent.Peripherals.Printer.clearBuffer();
+
+                await agent.Peripherals.Printer.barcodeQRModel(49);
+                await agent.Peripherals.Printer.barcodeQRSize(520);
+                await agent.Peripherals.Printer.barcodeQRStoreToSymbol('https://www.meldcx.com/');
+                await agent.Peripherals.Printer.barcodeQRSymbolStoreSize();
+                await agent.Peripherals.Printer.barcodeQRFromSymbolStore();
+                await agent.Peripherals.Printer.clearBuffer();
+
+                await agent.Peripherals.Printer.feed(12);
+                await agent.Peripherals.Printer.cutFull();
+                await agent.Peripherals.Printer.printFeed();
+            } catch (ex) {
+                console.error(`Failed to print - ${ex.toString()}`);
+            }
+        };
+
+        const printButton = document.getElementById('print');
+        printButton.onclick = async() => {
+            try {
+                printButton.innerText = 'PRINTING...';
+                printButton.disabled = true;
+
+                await print();
+            } finally {
+                printButton.innerText = 'PRINT';
+                printButton.disabled = false;
+            }
+        }
+
+    </script>
+</body>
+
+</html>
